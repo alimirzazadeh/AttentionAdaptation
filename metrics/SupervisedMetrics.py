@@ -14,25 +14,29 @@ from ipdb import set_trace as bp
 
 class Evaluator:
     def __init__(self):
-        self.supervised_losses = []
+        self.supervised_losses_source = []
+        self.supervised_losses_target = []
         # self.accuracies = []
-        self.unsupervised_losses = []
-        self.mAPs = []
-        self.bestmAP = 0
-        self.bestSupSum = 999999
+        self.unsupervised_losses_source = []
+        self.unsupervised_losses_target = []
+        self.accuracy_source = []
+        self.accuracy_target = []
+        self.best_accuracy_source = 0
+        self.best_accuracy_target = 0
+        self.bestUnsupSum = 999999
         self.counter = 0
 
 
 
 
-    def evaluateModelSupervisedPerformance(self, model, testloader, criteron, device, optimizer, storeLoss = False, batchDirectory=''):
+    def evaluateModelSupervisedPerformance(self, model, testloader, criteron, device, optimizer, storeLoss = False, batchDirectory='', source_or_target=0):
         #model.eval()
-        # running_corrects = 0
+        running_corrects = 0
         running_loss = 0.0
         
-        # tp = None
-        # fp = None
-        # fn = None
+        tp = None
+        fp = None
+        fn = None
         firstTime = True
         allTrueLabels = None
         allPredLabels = None
@@ -56,9 +60,10 @@ class Evaluator:
                 #print(outputs.shape)
                 #print(labels.shape)
                 #bp()
+                
                 l1 = criteron(outputs, labels)
                 
-                # _, preds = torch.max(outputs, 1)
+                _, preds = torch.max(outputs, 1)
                 
                 running_loss += l1.item()
                 
@@ -71,8 +76,8 @@ class Evaluator:
                     allPredLabels = np.append(allPredLabels, outputs.cpu().detach().numpy(), axis=0)
 
                     
-                    
-                # running_corrects += torch.sum(preds == labels.data)
+                #bp()
+                running_corrects += torch.sum(preds == labels.data)
 
                 
                 # for pred in range(preds.shape[0]):
@@ -101,8 +106,13 @@ class Evaluator:
             # print('\n Test Model Accuracy: %.3f' % float(running_corrects.item() / datasetSize))
             supervised_loss = float(running_loss / datasetSize)
             print('\n Test Model Supervised Loss: %.3f' % supervised_loss)
-            mAP = average_precision_score(allTrueLabels,allPredLabels,average='weighted')
-            print('\n Test Model mAP: %.3f' % mAP)
+            #bp()
+            #mAP = average_precision_score(allTrueLabels,allPredLabels,average='weighted')
+            accuracy = float(running_corrects.item() / datasetSize)
+            if source_or_target == 0:
+                print('\n Source Data Model accuracy: %.3f' % accuracy)
+            else:
+                print('\n Target Data Model accuracy: %.3f' % accuracy)
             # f1_score = self.calculateF1score(tp, fp, fn)
             
             # try:
@@ -113,28 +123,34 @@ class Evaluator:
             
             # f1_sum = np.nansum(f1_score.data.cpu().numpy())
             
-            if mAP > self.bestmAP:
-                self.bestmAP = mAP
-                print("\n Best mAP so far: ", self.bestmAP)
-                self.saveCheckpoint(model, optimizer, batchDirectory = batchDirectory, f1orsup=0)
+            if source_or_target == 0 and accuracy > self.best_accuracy_source:
+                self.best_accuracy_source = accuracy
+                print("\n Best Source Accuracy so far: ", self.best_accuracy_source)
+                self.saveCheckpoint(model, optimizer, batchDirectory = batchDirectory, source_sup_target=0)
                 # self.saveCheckpoint(model, optimizer, batchDirectory = batchDirectory)
+            elif source_or_target == 1 and accuracy > self.best_accuracy_target:
+                self.best_accuracy_target = accuracy
+                print("\n Best Target Accuracy so far: ", self.best_accuracy_target)
+                self.saveCheckpoint(model, optimizer, batchDirectory = batchDirectory, source_sup_target=2)
+                # self.saveCheckpoint(model, optimizer, batchDirectory = batchDirectory)
+
             
             # print('\n F1 Score: ', f1_score.data.cpu().numpy())
             # print('\n F1 Score Sum: ', f1_sum)
-            
-            if supervised_loss < self.bestSupSum:
-                self.bestSupSum = supervised_loss
-                print("\n Best Sup Loss so far: ", self.bestSupSum)
-                self.saveCheckpoint(model, optimizer, batchDirectory = batchDirectory, f1orsup=1)
-        
+                    
         
             
             if storeLoss:
-                self.supervised_losses.append(supervised_loss)
+                
                 # self.accuracies.append(float(running_corrects.item() / datasetSize))
-                self.mAPs.append(mAP)
+                if source_or_target == 0:
+                    self.supervised_losses_source.append(supervised_loss)
+                    self.accuracy_source.append(accuracy)
+                else:
+                    self.supervised_losses_target.append(supervised_loss)
+                    self.accuracy_target.append(accuracy)
         #print('..')
-    def evaluateModelUnsupervisedPerformance(self, model, testloader, CAMLossInstance, device, optimizer, target_category=None, storeLoss = False):
+    def evaluateModelUnsupervisedPerformance(self, model, testloader, CAMLossInstance, device, optimizer, target_category=None, storeLoss = False, batchDirectory='', source_or_target=0):
         # model.eval()
         running_loss = 0.0
         datasetSize = len(testloader.dataset)
@@ -146,40 +162,62 @@ class Evaluator:
                 inputs = inputs.to(device)
                 l1 = CAMLossInstance(inputs, target_category, visualize=False)
                 running_loss += l1.item()
-        print('\n Test Model Unsupervised Loss: %.3f' % float(running_loss / datasetSize))
+        unsupervised_loss = float(running_loss / datasetSize)
+        print('\n Test Model Unsupervised Loss: %.3f' % unsupervised_loss)
+
+        if source_or_target == 1 and unsupervised_loss < self.bestUnsupSum:
+            self.bestUnsupSum = unsupervised_loss
+            print("\n Best Target Unsup Loss so far: ", self.bestUnsupSum )
+            self.saveCheckpoint(model, optimizer, batchDirectory = batchDirectory, source_sup_target=1)
+
+
         if storeLoss:
-            self.unsupervised_losses.append(float(running_loss / datasetSize))
-    def evaluateUpdateLosses(self, model, testloader, criteron, CAMLossInstance, device, optimizer, unsupervised=True, batchDirectory=''):
+            return float(running_loss / datasetSize)
+    def evaluateUpdateLosses(self, model, testloader, targetloader, criteron, CAMLossInstance, device, optimizer, unsupervised=True, batchDirectory=''):
         if unsupervised:
             #print('evaluating unsupervised performance')
             CAMLossInstance.cam_model.activations_and_grads.register_hooks()
-            self.evaluateModelUnsupervisedPerformance(model, testloader, CAMLossInstance, device, optimizer, storeLoss = True)
+            self.unsupervised_losses_source.append(self.evaluateModelUnsupervisedPerformance(model, testloader, CAMLossInstance, device, optimizer, storeLoss = True, batchDirectory= batchDirectory, source_or_target=0))
+            self.unsupervised_losses_target.append(self.evaluateModelUnsupervisedPerformance(model, targetloader, CAMLossInstance, device, optimizer, storeLoss = True, batchDirectory= batchDirectory, source_or_target=1))
         #print('evaluating supervised performance')
         CAMLossInstance.cam_model.activations_and_grads.remove_hooks()
-        self.evaluateModelSupervisedPerformance(model, testloader, criteron, device, optimizer, storeLoss = True, batchDirectory= batchDirectory)
+        self.evaluateModelSupervisedPerformance(model, testloader, criteron, device, optimizer, storeLoss = True, batchDirectory= batchDirectory, source_or_target=0)
+        self.evaluateModelSupervisedPerformance(model, targetloader, criteron, device, optimizer, storeLoss = True, batchDirectory= batchDirectory, source_or_target=1)
+
         results = pd.DataFrame()        
         # results['Accuracy'] = self.accuracies       
-        results['Supervised Loss'] = self.supervised_losses     
-        results['Unsupervised Loss'] = self.unsupervised_losses     
-        results['mAPs'] = self.mAPs      
+        results['Supervised Loss Source'] = self.supervised_losses_source
+        results['Supervised Loss Target'] = self.supervised_losses_target     
+        results['Unsupervised Loss Source'] = self.unsupervised_losses_source  
+        results['Unsupervised Loss Target'] = self.unsupervised_losses_target     
+        results['accuracy_source'] = self.accuracy_source 
+        results['accuracy_target'] = self.accuracy_target      
         results.to_csv(batchDirectory+'saved_figs/results.csv', header=True)
     def plotLosses(self, batchDirectory=''):
         plt.clf()
-        fig, axs = plt.subplots(2, 2)
-        axs[0, 0].plot(self.supervised_losses, label="Supervised Loss")
-        axs[0, 0].set_title('Supervised Loss')
+        fig, axs = plt.subplots(2, 3)
+        axs[0, 0].plot(self.supervised_losses_source, label="Supervised Loss Source")
+        axs[0, 0].set_title('Supervised Loss Source')
         #plt.savefig(batchDirectory+'saved_figs/SupervisedLossPlot.png')
         #plt.clf()
-        axs[0, 1].plot(self.unsupervised_losses, label="Unsupervised Loss")
-        axs[0, 1].set_title('Unsupervised Loss')
+        axs[0, 1].plot(self.unsupervised_losses_source, label="Unsupervised Loss Source")
+        axs[0, 1].set_title('Unsupervised Loss Source')
         #plt.savefig(batchDirectory+'saved_figs/UnsupervisedLossPlot.png')
         #plt.clf()
-        axs[1, 0].plot(self.mAPs, label="mAPs")
-        axs[1, 0].set_title('mAPs')
+        axs[0, 2].plot(self.accuracy_source, label="accuracy")
+        axs[0, 2].set_title('accuracy source')
         #plt.savefig(batchDirectory+'saved_figs/TotalLossPlot.png')
         #plt.clf()
-        # axs[1, 1].plot(self.accuracies, label="Accuracy")
-        # axs[1, 1].set_title('Accuracy')
+
+        axs[1, 0].plot(self.supervised_losses_target, label="Supervised Loss Target")
+        axs[1, 0].set_title('Supervised Loss Target')
+
+        axs[1, 1].plot(self.unsupervised_losses_target, label="Unsupervised Loss Target")
+        axs[1, 1].set_title('Unsupervised Loss Target')
+
+        axs[1, 2].plot(self.accuracy_target, label="accuracy")
+        axs[1, 2].set_title('accuracy target')
+
         plt.tight_layout()
         plt.savefig(batchDirectory+'saved_figs/AllPlots.png')
         plt.close()
@@ -189,11 +227,14 @@ class Evaluator:
         precision = tp / (tp + fp)
         return 2 * (recall * precision) / (recall + precision)
         
-    def saveCheckpoint(self, net, optimizer, batchDirectory='',f1orsup=1):
-        if f1orsup == 1:
+    def saveCheckpoint(self, net, optimizer, batchDirectory='',source_sup_target=1):
+        if source_sup_target== 1:
             PATH = batchDirectory+"saved_checkpoints/model_best.pt"
-        else:
-            PATH = batchDirectory+"saved_checkpoints/model_best_mAP.pt"
+        elif source_sup_target == 2:
+            PATH = batchDirectory+"saved_checkpoints/model_best_accuracy_target.pt"
+        elif source_sup_target == 0:
+            PATH = batchDirectory+"saved_checkpoints/model_best_accuracy_source.pt"
+
         torch.save({
                     'model_state_dict': net.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),

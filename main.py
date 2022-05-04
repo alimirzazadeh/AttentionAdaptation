@@ -5,6 +5,8 @@ from metrics.UnsupervisedMetrics import visualizeLossPerformance
 from data_loader.new_pascal_runner import loadPascalData
 from data_loader.new_coco_runner import loadCocoData
 from data_loader.new_imagenette_runner import loadImagenetteData
+from data_loader.new_office31_runner import loadOffice31Data
+from data_loader.new_visda_runner import loadVisdaData
 from model.laso import LaSO, LaSOLoss
 import os
 import numpy as np
@@ -129,10 +131,10 @@ if __name__ == '__main__':
     #    numImagesPerClass, batch_size=batch_size, unsup_batch_size=unsup_batch_size, 
     #    fullyBalanced=fullyBalanced, useNewUnsupervised=useNewUnsupervised, 
     #    unsupDatasetSize=unsupDatasetSize)
-    suptrainloader, unsuptrainloader, validloader, testloader = loadCocoData(
-        numImagesPerClass, batch_size=batch_size, unsup_batch_size=unsup_batch_size, 
-        fullyBalanced=fullyBalanced, useNewUnsupervised=useNewUnsupervised, 
-        unsupDatasetSize=unsupDatasetSize)
+    suptrainloader, validLoader, testLoader = loadVisdaData(
+        batch_size=batch_size)
+
+    
     #bp()
     #suptrainloader, unsuptrainloader, validloader, testloader = loadPascalData(
     #    numImagesPerClass, batch_size=batch_size, unsup_batch_size=unsup_batch_size, 
@@ -323,7 +325,7 @@ if __name__ == '__main__':
         sys.exit()
     if toTrain:
         print('Beginning Training')
-        train(model, numEpochs, suptrainloader, unsuptrainloader, validloader, optimizer, target_layer, target_category, use_cuda, resolutionMatch,
+        train(model, numEpochs, suptrainloader, validLoader, testLoader, optimizer, target_layer, target_category, use_cuda, resolutionMatch,
               similarityMetric, alpha, training=whichTraining, batchDirectory=batchDirectory, batch_size=batch_size, 
               unsup_batch_size=unsup_batch_size, perBatchEval=perBatchEval, saveRecurringCheckpoint=saveRecurringCheckpoint, maskIntensity=maskIntensity)
         print("Training Complete.")
@@ -333,5 +335,5 @@ if __name__ == '__main__':
         ##load the best checkpoint and evaulate it. 
         checkpoint = torch.load(batchDirectory + "saved_checkpoints/model_best.pt", map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
-        evaluate(model, testloader, device, batchDirectory=batchDirectory)
+        evaluate(model, testLoader, device, batchDirectory=batchDirectory)
         print("Finished Evaluating")

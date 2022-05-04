@@ -34,7 +34,7 @@ def customTrain(model):
     model.apply(_freeze_norm_stats)
             
 
-def train(model, numEpochs, suptrainloader, unsuptrainloader, validloader, optimizer, 
+def train(model, numEpochs, suptrainloader, validloader, testloader, optimizer, 
     target_layer, target_category, use_cuda, resolutionMatch, similarityMetric, alpha, 
     training='alternating', batchDirectory='', scheduler=None, batch_size=4, 
     unsup_batch_size=12, perBatchEval=None, saveRecurringCheckpoint=None, maskIntensity=8):
@@ -62,16 +62,17 @@ def train(model, numEpochs, suptrainloader, unsuptrainloader, validloader, optim
     # criteron = nn.MultiLabelSoftMarginLoss(weight=weight)
         
     
-    #criteron = torch.nn.CrossEntropyLoss()
-    criteron = nn.BCEWithLogitsLoss()
+    criteron = torch.nn.CrossEntropyLoss()
+    #criteron = nn.BCEWithLogitsLoss()
     print('pretraining evaluation...')
     model.eval()
-    LossEvaluator.evaluateUpdateLosses(model, validloader, criteron, CAMLossInstance, device, optimizer, unsupervised=True, batchDirectory=batchDirectory) #unsupervised=training!='supervised')
+    LossEvaluator.evaluateUpdateLosses(model, validloader, testloader, criteron, CAMLossInstance, device, optimizer, unsupervised=True, batchDirectory=batchDirectory) #unsupervised=training!='supervised')
     LossEvaluator.plotLosses(batchDirectory=batchDirectory)
     print('finished evaluating')
         
     supdatasetSize = len(suptrainloader.dataset)
     print("\n\nTotal Supervised Dataset: ", supdatasetSize)
+    unsuptrainloader = testloader
     unsupdatasetSize = len(unsuptrainloader.dataset)
     print("Total Unsupervised Dataset: ", unsupdatasetSize)
 
@@ -217,13 +218,13 @@ def train(model, numEpochs, suptrainloader, unsuptrainloader, validloader, optim
                 print('Epoch {} counter {}'.format(epoch, counter))
                 model.eval()
                 optimizer.zero_grad()
-                LossEvaluator.evaluateUpdateLosses(model, validloader, criteron, CAMLossInstance, device, optimizer, unsupervised=True, batchDirectory=batchDirectory) #training!='supervised')
+                LossEvaluator.evaluateUpdateLosses(model, validloader, testloader, criteron, CAMLossInstance, device, optimizer, unsupervised=True, batchDirectory=batchDirectory) #training!='supervised')
                 LossEvaluator.plotLosses(batchDirectory=batchDirectory)
         if perBatchEval == None:
             print('Epoch {} of {}'.format(epoch, numEpochs))
             model.eval()
             optimizer.zero_grad()
-            LossEvaluator.evaluateUpdateLosses(model, validloader, criteron, CAMLossInstance, device, optimizer, unsupervised=True, batchDirectory=batchDirectory) #training!='supervised')
+            LossEvaluator.evaluateUpdateLosses(model, validloader, testloader, criteron, CAMLossInstance, device, optimizer, unsupervised=True, batchDirectory=batchDirectory) #training!='supervised')
             LossEvaluator.plotLosses(batchDirectory=batchDirectory)
 
     print('\n \n BEST SUP LOSS OVERALL: ', LossEvaluator.bestSupSum, '\n\n')
